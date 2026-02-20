@@ -15,7 +15,7 @@
     "commands": [
       {
         "command": "harborbrowser.login",
-        "title": "Harbor: Login"
+        "title": "Harbor Browser: Login"
       }
     ]
   },
