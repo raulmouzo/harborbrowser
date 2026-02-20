@@ -98,13 +98,7 @@ export class ProjectsProvider
   async getChildren(element?: HarborTreeItem): Promise<HarborTreeItem[]> {
     if (!element) {
       if (!this.credentials) {
-        return [
-          new HarborTreeItem(
-            "message",
-            "Login to connect to Harbor",
-            vscode.TreeItemCollapsibleState.None,
-          ),
-        ];
+        return [];
       }
       const host = new URL(this.credentials.url).host;
       return [

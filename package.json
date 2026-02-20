@@ -15,7 +15,8 @@
     "commands": [
       {
         "command": "harborbrowser.login",
-        "title": "Harbor Browser: Login"
+        "title": "Harbor Browser: Login",
+        "icon": "$(sign-in)"
       },
       {
         "command": "harborbrowser.logout",
@@ -58,6 +59,12 @@
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "harborbrowser.projects",
+        "contents": "Connect to a Harbor registry to browse your container images.\n[Login to Harbor](command:harborbrowser.login)"
+      }
+    ],
     "menus": {
       "view/title": [
         {
