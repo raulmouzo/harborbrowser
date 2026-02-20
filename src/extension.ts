@@ -6,9 +6,13 @@ export function activate(context: vscode.ExtensionContext) {
   const loginCommand = vscode.commands.registerCommand(
     "harborbrowser.login",
     async () => {
+      const storedUrl = await context.secrets.get("harbor.url");
+      const storedUsername = await context.secrets.get("harbor.username");
+
       const url = await vscode.window.showInputBox({
         prompt: "Harbor URL",
         placeHolder: "https://harbor.example.com",
+        value: storedUrl,
         ignoreFocusOut: true,
       });
       if (!url) {
@@ -17,6 +21,7 @@ export function activate(context: vscode.ExtensionContext) {
 
       const username = await vscode.window.showInputBox({
         prompt: "Username",
+        value: storedUsername,
         ignoreFocusOut: true,
       });
       if (!username) {
