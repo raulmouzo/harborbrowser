@@ -110,7 +110,7 @@ export class ProjectsProvider
         new HarborTreeItem(
           "section-private",
           "Private Projects",
-          vscode.TreeItemCollapsibleState.Collapsed,
+          vscode.TreeItemCollapsibleState.Expanded,
         ),
       ];
     }
