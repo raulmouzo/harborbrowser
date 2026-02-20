@@ -77,6 +77,18 @@ export function activate(context: vscode.ExtensionContext) {
     },
   );
 
+  const logoutCommand = vscode.commands.registerCommand(
+    "harborbrowser.logout",
+    async () => {
+      await context.secrets.delete("harbor.url");
+      await context.secrets.delete("harbor.username");
+      await context.secrets.delete("harbor.password");
+      provider.setCredentials(undefined);
+      treeView.description = undefined;
+      vscode.window.showInformationMessage("Harbor credentials cleared.");
+    },
+  );
+
   const refreshCommand = vscode.commands.registerCommand(
     "harborbrowser.refresh",
     () => {
@@ -140,6 +152,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     treeView,
     loginCommand,
+    logoutCommand,
     refreshCommand,
     copyImageNameCommand,
     copyPullCommandCommand,
