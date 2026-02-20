@@ -17,7 +17,24 @@
         "command": "harborbrowser.login",
         "title": "Harbor Browser: Login"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "harborbrowser",
+          "title": "Harbor Browser",
+          "icon": "harborbrowser.svg"
+        }
+      ]
+    },
+    "views": {
+      "harborbrowser": [
+        {
+          "id": "harborbrowser.projects",
+          "name": "Projects"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "pnpm run package",

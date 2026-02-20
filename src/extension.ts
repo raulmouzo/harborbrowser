@@ -1,7 +1,26 @@
 import * as vscode from "vscode";
+import { HarborCredentials } from "./harbor/client";
+import { ProjectsProvider } from "./views/projectsView";
 
 export function activate(context: vscode.ExtensionContext) {
   console.log("HarborBrowser activated");
+
+  const provider = new ProjectsProvider(undefined);
+
+  vscode.window.createTreeView("harborbrowser.projects", {
+    treeDataProvider: provider,
+  });
+
+  context.secrets.get("harbor.url").then(async (url) => {
+    if (!url) {
+      return;
+    }
+    const username = (await context.secrets.get("harbor.username")) || "";
+    const password = (await context.secrets.get("harbor.password")) || "";
+    if (username && password) {
+      provider.setCredentials({ url, username, password });
+    }
+  });
 
   const loginCommand = vscode.commands.registerCommand(
     "harborbrowser.login",
@@ -37,9 +56,17 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      await context.secrets.store("harbor.url", url);
+      const normalizedUrl = url.startsWith("http") ? url : `https://${url}`;
+      await context.secrets.store("harbor.url", normalizedUrl);
       await context.secrets.store("harbor.username", username);
       await context.secrets.store("harbor.password", password);
+
+      const credentials: HarborCredentials = {
+        url: normalizedUrl,
+        username,
+        password,
+      };
+      provider.setCredentials(credentials);
 
       vscode.window.showInformationMessage(
         `Harbor credentials saved for ${username}`,
