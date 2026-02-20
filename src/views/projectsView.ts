@@ -11,6 +11,7 @@ import {
 } from "../harbor/client";
 
 type NodeType =
+  | "connection"
   | "section-public"
   | "section-private"
   | "project"
@@ -41,6 +42,10 @@ export class HarborTreeItem extends vscode.TreeItem {
   ) {
     super(label, collapsibleState);
     this.contextValue = nodeType;
+
+    if (nodeType === "connection") {
+      this.iconPath = new vscode.ThemeIcon("server");
+    }
 
     if (nodeType === "project" && project) {
       this.description = `${project.repo_count} repos`;
@@ -101,7 +106,13 @@ export class ProjectsProvider
           ),
         ];
       }
+      const host = new URL(this.credentials.url).host;
       return [
+        new HarborTreeItem(
+          "connection",
+          host,
+          vscode.TreeItemCollapsibleState.None,
+        ),
         new HarborTreeItem(
           "section-public",
           "Public Projects",

@@ -7,8 +7,9 @@ export function activate(context: vscode.ExtensionContext) {
 
   const provider = new ProjectsProvider(undefined);
 
-  vscode.window.createTreeView("harborbrowser.projects", {
+  const treeView = vscode.window.createTreeView("harborbrowser.projects", {
     treeDataProvider: provider,
+    showCollapseAll: true,
   });
 
   context.secrets.get("harbor.url").then(async (url) => {
@@ -19,6 +20,7 @@ export function activate(context: vscode.ExtensionContext) {
     const password = (await context.secrets.get("harbor.password")) || "";
     if (username && password) {
       provider.setCredentials({ url, username, password });
+      treeView.description = new URL(url).host;
     }
   });
 
@@ -67,6 +69,7 @@ export function activate(context: vscode.ExtensionContext) {
         password,
       };
       provider.setCredentials(credentials);
+      treeView.description = new URL(normalizedUrl).host;
 
       vscode.window.showInformationMessage(
         `Harbor credentials saved for ${username}`,
@@ -135,6 +138,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    treeView,
     loginCommand,
     refreshCommand,
     copyImageNameCommand,
