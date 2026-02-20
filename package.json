@@ -16,8 +16,75 @@
       {
         "command": "harborbrowser.login",
         "title": "Harbor Browser: Login"
+      },
+      {
+        "command": "harborbrowser.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "harborbrowser.copyImageName",
+        "title": "Copy Image Name",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "harborbrowser.copyPullCommand",
+        "title": "Copy Pull Command"
+      },
+      {
+        "command": "harborbrowser.openInBrowser",
+        "title": "Open in Browser",
+        "icon": "$(link-external)"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "harborbrowser",
+          "title": "Harbor Browser",
+          "icon": "harborbrowser.svg"
+        }
+      ]
+    },
+    "views": {
+      "harborbrowser": [
+        {
+          "id": "harborbrowser.projects",
+          "name": "Projects"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "harborbrowser.refresh",
+          "when": "view == harborbrowser.projects",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "harborbrowser.copyImageName",
+          "when": "view == harborbrowser.projects && viewItem == artifact",
+          "group": "inline@1"
+        },
+        {
+          "command": "harborbrowser.copyImageName",
+          "when": "view == harborbrowser.projects && viewItem == artifact",
+          "group": "copy@1"
+        },
+        {
+          "command": "harborbrowser.copyPullCommand",
+          "when": "view == harborbrowser.projects && viewItem == artifact",
+          "group": "copy@2"
+        },
+        {
+          "command": "harborbrowser.openInBrowser",
+          "when": "view == harborbrowser.projects && (viewItem == project || viewItem == repository || viewItem == artifact)",
+          "group": "navigation@1"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "pnpm run package",
