@@ -18,6 +18,10 @@
         "title": "Harbor Browser: Login"
       },
       {
+        "command": "harborbrowser.logout",
+        "title": "Harbor Browser: Clear Credentials"
+      },
+      {
         "command": "harborbrowser.refresh",
         "title": "Refresh",
         "icon": "$(refresh)"
