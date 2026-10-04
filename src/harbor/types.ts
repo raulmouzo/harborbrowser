@@ -50,6 +50,54 @@ export interface HarborArtifact {
   push_time: string;
   pull_time?: string;
   tags: HarborTag[] | null;
+  /** Requested with `with_scan_overview=true`; keyed by report MIME type. */
+  scan_overview?: Record<string, HarborScanSummary> | null;
+}
+
+// Vulnerability scanning models (src/pkg/scan/vuln in goharbor/harbor).
+
+export interface HarborScanner {
+  name?: string;
+  vendor?: string;
+  version?: string;
+}
+
+export interface HarborVulnerabilitySummary {
+  total?: number;
+  fixable?: number;
+  /** Count per severity, e.g. { "Critical": 2, "High": 5 }. */
+  summary?: Record<string, number> | null;
+}
+
+/** NativeReportSummary: scan status and severity totals of an artifact. */
+export interface HarborScanSummary {
+  report_id?: string;
+  /** "Pending", "Scheduled", "Running", "Stopped", "Error" or "Success". */
+  scan_status?: string;
+  /** "None", "Unknown", "Negligible", "Low", "Medium", "High" or "Critical". */
+  severity?: string;
+  summary?: HarborVulnerabilitySummary | null;
+  end_time?: string;
+  complete_percent?: number;
+  scanner?: HarborScanner | null;
+}
+
+export interface HarborVulnerability {
+  id: string;
+  package?: string;
+  version?: string;
+  fix_version?: string;
+  severity?: string;
+  description?: string;
+  links?: string[] | null;
+  preferred_cvss?: { score_v3?: number | null; score_v2?: number | null } | null;
+}
+
+export interface HarborVulnerabilityReport {
+  generated_at?: string;
+  scanner?: HarborScanner | null;
+  severity?: string;
+  vulnerabilities?: HarborVulnerability[] | null;
 }
 
 export interface HarborSystemInfo {

@@ -8,6 +8,7 @@
 - Credentials are verified before they are saved, for user accounts, OIDC CLI secrets and robot accounts.
 - A warning in the tree when the saved credentials are no longer accepted.
 - Pull commands for Helm charts (`helm pull oci://…`) and CNAB bundles, matching the Harbor portal.
+- Vulnerability scan results: artifacts are colored by their highest severity, show the number of findings and the state of running scans, and **Show Vulnerability Report** opens the full report as a read-only Markdown document.
 - Proxy cache projects are marked in the tree.
 - Errors are shown in the tree, and details are logged to the new **Harbor Browser: Show Logs** output channel.
 - Marketplace icon, and support for Restricted Mode and virtual workspaces.

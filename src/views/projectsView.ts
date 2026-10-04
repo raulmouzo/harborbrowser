@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { ProjectVisibility } from "../harbor/client";
 import { imageReference, pullCommand, registryHost, repositoryReference } from "../harbor/references";
+import { ScanState, Severity, scanDescription, scanState, vulnerabilityCounts } from "../harbor/scan";
 import { HarborArtifact, HarborProject, HarborRepository, HarborSystemInfo } from "../harbor/types";
 import { repositoryShortName } from "../harbor/url";
 import { formatBytes, pluralize, shortDigest } from "../format";
@@ -69,6 +70,8 @@ export class ProjectsProvider implements vscode.TreeDataProvider<HarborNode>, vs
 
   /** Host used in image references, resolved when the root is loaded. */
   private registryHostName: string | undefined;
+  /** Authentication mode of the connected instance ("db_auth", "oidc_auth"…). */
+  private connectedAuthMode: string | undefined;
   private readonly dateFormat = createDateFormat({ dateStyle: "medium" });
   private readonly dateTimeFormat = createDateFormat({ dateStyle: "medium", timeStyle: "short" });
 
@@ -76,6 +79,10 @@ export class ProjectsProvider implements vscode.TreeDataProvider<HarborNode>, vs
     private readonly session: HarborSession,
     private readonly log: vscode.LogOutputChannel,
   ) {}
+
+  get authMode(): string | undefined {
+    return this.connectedAuthMode;
+  }
 
   refresh(): void {
     this.changeEmitter.fire();
@@ -177,6 +184,7 @@ export class ProjectsProvider implements vscode.TreeDataProvider<HarborNode>, vs
     return this.load("root", `Could not connect to ${host}`, async () => {
       const { info, credentialsAccepted } = await client.getSystemInfo();
       this.registryHostName = registryHost(connection.url, info.registry_url);
+      this.connectedAuthMode = info.auth_mode;
 
       const root: HarborNode[] = [{
         kind: "connection",
@@ -257,12 +265,22 @@ export class ProjectsProvider implements vscode.TreeDataProvider<HarborNode>, vs
     const { artifact, tag } = node;
     const item = new vscode.TreeItem(tag ?? shortDigest(artifact.digest), vscode.TreeItemCollapsibleState.None);
     item.id = `artifact:${artifact.id}:${tag ?? "@untagged"}`;
-    item.contextValue = node.pullCommand ? "artifact:pullable" : "artifact";
-    item.iconPath = new vscode.ThemeIcon(tag ? "tag" : "circle-outline");
+
+    const scan = scanState(artifact);
+    const contextFlags = [
+      node.pullCommand ? "pullable" : undefined,
+      scan.kind === "done" ? "scanned" : undefined,
+    ].filter(Boolean);
+    item.contextValue = ["artifact", ...contextFlags].join(":");
+    item.iconPath = new vscode.ThemeIcon(
+      tag ? "tag" : "circle-outline",
+      scan.kind === "done" ? severityColor(scan.severity) : undefined,
+    );
 
     item.description = [
       tag ? undefined : "untagged",
       artifact.type && artifact.type !== "IMAGE" ? artifact.type.toLowerCase() : undefined,
+      scanDescription(scan),
       this.formatDate(artifact.push_time, this.dateFormat),
       formatBytes(artifact.size),
     ].filter(Boolean).join(" · ");
@@ -270,6 +288,9 @@ export class ProjectsProvider implements vscode.TreeDataProvider<HarborNode>, vs
     const tooltip = new vscode.MarkdownString();
     tooltip.appendCodeblock(node.reference, "text");
     tooltip.appendMarkdown("**Type:** ").appendText(artifact.type || "unknown").appendMarkdown("  \n");
+    if (artifact.type === "IMAGE" || scan.kind !== "notScanned") {
+      tooltip.appendMarkdown("**Vulnerabilities:** ").appendText(this.describeScan(scan)).appendMarkdown("  \n");
+    }
     tooltip.appendMarkdown("**Digest:** ").appendText(artifact.digest).appendMarkdown("  \n");
     tooltip.appendMarkdown("**Size:** ").appendText(formatBytes(artifact.size)).appendMarkdown("  \n");
     const pushed = this.formatDate(artifact.push_time, this.dateTimeFormat);
@@ -284,6 +305,21 @@ export class ProjectsProvider implements vscode.TreeDataProvider<HarborNode>, vs
     return item;
   }
 
+  private describeScan(scan: ScanState): string {
+    switch (scan.kind) {
+      case "notScanned":
+        return "not scanned";
+      case "done": {
+        const scanner = [scan.summary.scanner?.name, scan.summary.scanner?.version].filter(Boolean).join(" ");
+        const scanned = this.formatDate(scan.summary.end_time, this.dateTimeFormat);
+        const details = [scanner && `by ${scanner}`, scanned && `on ${scanned}`].filter(Boolean).join(" ");
+        return `${vulnerabilityCounts(scan.summary)}${details ? ` (scanned ${details})` : ""}`;
+      }
+      default:
+        return scanDescription(scan) ?? "unknown";
+    }
+  }
+
   private formatDate(value: string | undefined, format: Intl.DateTimeFormat): string | undefined {
     if (!value) {
       return undefined;
@@ -294,6 +330,25 @@ export class ProjectsProvider implements vscode.TreeDataProvider<HarborNode>, vs
       return undefined;
     }
     return format.format(date);
+  }
+}
+
+/** Colors follow the Harbor portal: red, orange, yellow, blue and green. */
+function severityColor(severity: Severity): vscode.ThemeColor | undefined {
+  switch (severity) {
+    case "Critical":
+      return new vscode.ThemeColor("charts.red");
+    case "High":
+      return new vscode.ThemeColor("charts.orange");
+    case "Medium":
+      return new vscode.ThemeColor("charts.yellow");
+    case "Low":
+    case "Negligible":
+      return new vscode.ThemeColor("charts.blue");
+    case "None":
+      return new vscode.ThemeColor("charts.green");
+    default:
+      return undefined;
   }
 }
 

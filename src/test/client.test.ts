@@ -63,6 +63,33 @@ suite("HarborClient", () => {
     });
   });
 
+  test("requests scan overviews with the report formats of the Harbor portal", async () => {
+    let accept: string | undefined;
+    await withServer((request, response) => {
+      accept = request.headers["x-accept-vulnerabilities"] as string | undefined;
+      sendJson(response, 200, []);
+    }, async (baseUrl, requests) => {
+      await new HarborClient({ baseUrl }).listArtifacts("library", "nginx");
+      assert.match(requests[0], /with_scan_overview=true/);
+      assert.match(accept ?? "", /^application\/vnd\.security\.vulnerability\.report; version=1\.1, /);
+    });
+  });
+
+  test("returns the vulnerability report of an artifact, or undefined when there is none", async () => {
+    const digest = "sha256:abc";
+    await withServer((request, response) => {
+      if (request.url?.includes("/repositories/apps%252Fapi/artifacts/sha256%3Aabc/additions/vulnerabilities")) {
+        sendJson(response, 200, { "application/vnd.security.vulnerability.report; version=1.1": { severity: "High", vulnerabilities: [] } });
+      } else {
+        sendJson(response, 200, {});
+      }
+    }, async (baseUrl) => {
+      const client = new HarborClient({ baseUrl });
+      assert.strictEqual((await client.getVulnerabilityReport("team", "apps/api", digest))?.severity, "High");
+      assert.strictEqual(await client.getVulnerabilityReport("team", "other", digest), undefined);
+    });
+  });
+
   test("detects accepted credentials through the protected systeminfo fields", async () => {
     let authorization: string | undefined;
     await withServer((request, response) => {

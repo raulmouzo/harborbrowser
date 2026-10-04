@@ -3,10 +3,12 @@ import { connect } from "./connect";
 import { portalUrls } from "./harbor/references";
 import { HarborSession } from "./session";
 import { ArtifactNode, HarborNode, ProjectsProvider } from "./views/projectsView";
+import { VulnerabilityReportProvider } from "./vulnerabilityReports";
 
 export function registerCommands(
   session: HarborSession,
   provider: ProjectsProvider,
+  reports: VulnerabilityReportProvider,
   log: vscode.LogOutputChannel,
 ): vscode.Disposable[] {
   return [
@@ -27,6 +29,10 @@ export function registerCommands(
 
     vscode.commands.registerCommand("harborbrowser.copyPullCommand", (node?: HarborNode) =>
       isArtifact(node) && node.pullCommand ? copy(node.pullCommand) : undefined,
+    ),
+
+    vscode.commands.registerCommand("harborbrowser.showVulnerabilities", (node?: HarborNode) =>
+      isArtifact(node) ? reports.show(node) : undefined,
     ),
 
     vscode.commands.registerCommand("harborbrowser.openInBrowser", async (node?: HarborNode) => {

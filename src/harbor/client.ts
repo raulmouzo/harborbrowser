@@ -5,7 +5,9 @@ import {
   HarborProject,
   HarborRepository,
   HarborSystemInfo,
+  HarborVulnerabilityReport,
 } from "./types";
+import { VULNERABILITY_REPORT_MIME_TYPES } from "./scan";
 import { encodeRepositoryPathSegment } from "./url";
 
 /** Largest page size accepted by the Harbor API. */
@@ -82,9 +84,29 @@ export class HarborClient {
 
   listArtifacts(projectName: string, repositoryShortName: string): Promise<HarborArtifact[]> {
     return this.requestAllPages<HarborArtifact>(
-      `/projects/${encodeURIComponent(projectName)}/repositories/${encodeRepositoryPathSegment(repositoryShortName)}/artifacts`,
-      { with_tag: true, with_accessory: false, sort: "-push_time" },
+      artifactsPath(projectName, repositoryShortName),
+      { with_tag: true, with_accessory: false, with_scan_overview: true, sort: "-push_time" },
+      { "X-Accept-Vulnerabilities": VULNERABILITY_REPORT_MIME_TYPES },
     );
+  }
+
+  /**
+   * Full vulnerability report of an artifact (aggregated over the child images
+   * of an index). Returns undefined when no report exists yet.
+   */
+  async getVulnerabilityReport(
+    projectName: string,
+    repositoryShortName: string,
+    reference: string,
+  ): Promise<HarborVulnerabilityReport | undefined> {
+    const response = await this.request(
+      `${artifactsPath(projectName, repositoryShortName)}/${encodeURIComponent(reference)}/additions/vulnerabilities`,
+      {},
+      { "X-Accept-Vulnerabilities": VULNERABILITY_REPORT_MIME_TYPES },
+    );
+    // The body maps the report MIME type to the report, or is {} when there is none.
+    const reports = (await parseJson<Record<string, HarborVulnerabilityReport> | null>(response)) ?? {};
+    return Object.values(reports)[0];
   }
 
   /**
@@ -92,10 +114,14 @@ export class HarborClient {
    * because Harbor unescapes its query string; pages are requested explicitly
    * until `X-Total-Count` items are collected or a short page is returned.
    */
-  private async requestAllPages<T>(path: string, query: QueryParams): Promise<T[]> {
+  private async requestAllPages<T>(
+    path: string,
+    query: QueryParams,
+    extraHeaders: Record<string, string> = {},
+  ): Promise<T[]> {
     const items: T[] = [];
     for (let page = 1; ; page++) {
-      const response = await this.request(path, { ...query, page, page_size: MAX_PAGE_SIZE });
+      const response = await this.request(path, { ...query, page, page_size: MAX_PAGE_SIZE }, extraHeaders);
       const pageItems = (await parseJson<T[] | null>(response)) ?? [];
       items.push(...pageItems);
 
@@ -107,14 +133,18 @@ export class HarborClient {
     }
   }
 
-  private async request(path: string, query: QueryParams = {}): Promise<Response> {
+  private async request(
+    path: string,
+    query: QueryParams = {},
+    extraHeaders: Record<string, string> = {},
+  ): Promise<Response> {
     const url = new URL(`/api/v2.0${path}`, this.options.baseUrl);
     for (const [key, value] of Object.entries(query)) {
       url.searchParams.set(key, String(value));
     }
     const requestUrl = url.toString();
 
-    const headers: Record<string, string> = { Accept: "application/json" };
+    const headers: Record<string, string> = { Accept: "application/json", ...extraHeaders };
     if (this.options.credentials) {
       const { username, password } = this.options.credentials;
       headers.Authorization = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
@@ -135,6 +165,10 @@ export class HarborClient {
     }
     return response;
   }
+}
+
+function artifactsPath(projectName: string, repositoryShortName: string): string {
+  return `/projects/${encodeURIComponent(projectName)}/repositories/${encodeRepositoryPathSegment(repositoryShortName)}/artifacts`;
 }
 
 async function parseJson<T>(response: Response): Promise<T> {
