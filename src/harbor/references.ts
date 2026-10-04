@@ -27,15 +27,29 @@ export function imageReference(repository: string, artifact: HarborArtifact, tag
   return tag ? `${repository}:${tag}` : `${repository}@${artifact.digest}`;
 }
 
+/** Command-line clients offered for container images (setting `harborbrowser.pullCommand.client`). */
+export const IMAGE_CLIENTS = ["docker", "podman"] as const;
+export type ImageClient = (typeof IMAGE_CLIENTS)[number];
+
+export function isImageClient(value: unknown): value is ImageClient {
+  return IMAGE_CLIENTS.includes(value as ImageClient);
+}
+
 /**
  * Pull command for an artifact, mirroring the Harbor portal:
- * images use docker, CNAB bundles use cnab-to-oci, Helm charts use `helm pull oci://`
- * (only possible with a tag). Other artifact types have no pull command.
+ * images use the chosen client (docker or podman, both `<client> pull <reference>`),
+ * CNAB bundles use cnab-to-oci, Helm charts use `helm pull oci://` (only possible
+ * with a tag). Other artifact types have no pull command.
  */
-export function pullCommand(repository: string, artifact: HarborArtifact, tag?: string): string | undefined {
+export function pullCommand(
+  repository: string,
+  artifact: HarborArtifact,
+  tag?: string,
+  imageClient: ImageClient = "docker",
+): string | undefined {
   switch (artifact.type) {
     case "IMAGE":
-      return `docker pull ${imageReference(repository, artifact, tag)}`;
+      return `${imageClient} pull ${imageReference(repository, artifact, tag)}`;
     case "CNAB":
       return `cnab-to-oci pull ${imageReference(repository, artifact, tag)}`;
     case "CHART":

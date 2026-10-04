@@ -7,7 +7,7 @@ Browse a [Harbor](https://goharbor.io/) container registry from the sidebar of V
 - **Projects, repositories and artifacts in a tree**: private projects you belong to and public projects, with nested repositories (`team/apps/api`), proxy cache projects, tags and untagged artifacts.
 - **Copy image reference**: `registry.example.com/library/nginx:1.27`, or `…@sha256:…` for untagged artifacts.
 - **Copy pull command** that matches the artifact type, the same way the Harbor portal does:
-  - container images: `docker pull …`
+  - container images: `docker pull …` or `podman pull …`
   - Helm charts: `helm pull oci://… --version …`
   - CNAB bundles: `cnab-to-oci pull …`
 - **Open in Harbor**: jump to the project, repository or artifact page in the web portal.
@@ -48,10 +48,16 @@ Right-click an artifact, or use the buttons that appear on hover:
 | Action | Result |
 | --- | --- |
 | **Copy Image Reference** | Copies `<registry>/<project>/<repository>:<tag>` or `…@<digest>` |
-| **Copy Pull Command** | Copies the pull command for the artifact type (images, Helm charts and CNAB bundles) |
+| **Copy Pull Command** | Copies the pull command for the artifact type (images, Helm charts and CNAB bundles). Images use the client chosen in the `harborbrowser.pullCommand.client` setting |
 | **Open in Harbor** | Opens the artifact in the Harbor web portal |
 
 Image references use the registry address reported by Harbor, which can differ from the address you connected to when Harbor sits behind a proxy or load balancer.
+
+## Settings
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `harborbrowser.pullCommand.client` | `docker` | Client used by **Copy Pull Command** for container images: `docker` or `podman`. Helm charts and CNAB bundles always use `helm` and `cnab-to-oci`. |
 
 ## Commands
 

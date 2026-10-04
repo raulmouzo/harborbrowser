@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { connect } from "./connect";
-import { portalUrls } from "./harbor/references";
+import { ImageClient, isImageClient, portalUrls, pullCommand } from "./harbor/references";
 import { HarborSession } from "./session";
 import { ArtifactNode, HarborNode, ProjectsProvider } from "./views/projectsView";
 
@@ -25,9 +25,13 @@ export function registerCommands(
       isArtifact(node) ? copy(node.reference) : undefined,
     ),
 
-    vscode.commands.registerCommand("harborbrowser.copyPullCommand", (node?: HarborNode) =>
-      isArtifact(node) && node.pullCommand ? copy(node.pullCommand) : undefined,
-    ),
+    vscode.commands.registerCommand("harborbrowser.copyPullCommand", (node?: HarborNode) => {
+      if (!isArtifact(node)) {
+        return undefined;
+      }
+      const command = pullCommand(node.repositoryReference, node.artifact, node.tag, configuredImageClient());
+      return command ? copy(command) : undefined;
+    }),
 
     vscode.commands.registerCommand("harborbrowser.openInBrowser", async (node?: HarborNode) => {
       const url = node ? portalUrl(node) : undefined;
@@ -36,6 +40,12 @@ export function registerCommands(
       }
     }),
   ];
+}
+
+/** Read when copying, so changes to the setting apply without refreshing the tree. */
+function configuredImageClient(): ImageClient {
+  const value = vscode.workspace.getConfiguration("harborbrowser").get<string>("pullCommand.client");
+  return isImageClient(value) ? value : "docker";
 }
 
 function isArtifact(node: HarborNode | undefined): node is ArtifactNode {
