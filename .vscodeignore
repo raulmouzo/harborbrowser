@@ -1,11 +1,10 @@
+.github/**
 .vscode/**
 .vscode-test/**
-.vscode-test.*
 out/**
 node_modules/**
 src/**
 .gitignore
-.npmrc
 esbuild.js
 pnpm-lock.yaml
 pnpm-workspace.yaml
@@ -13,3 +12,5 @@ pnpm-workspace.yaml
 **/eslint.config.mjs
 **/*.map
 **/*.ts
+**/.vscode-test.*
+resources/icon.svg

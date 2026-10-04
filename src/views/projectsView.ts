@@ -1,307 +1,389 @@
 import * as vscode from "vscode";
-import {
-  HarborArtifact,
-  HarborCredentials,
-  HarborProject,
-  HarborRepository,
-  listArtifacts,
-  listPrivateProjects,
-  listPublicProjects,
-  listRepositories,
-} from "../harbor/client";
+import { ProjectVisibility } from "../harbor/client";
+import { imageReference, pullCommand, registryHost, repositoryReference } from "../harbor/references";
+import { HarborArtifact, HarborProject, HarborRepository, HarborSystemInfo } from "../harbor/types";
+import { repositoryShortName } from "../harbor/url";
+import { formatBytes, pluralize, shortDigest } from "../format";
+import { HarborSession } from "../session";
 
-type NodeType =
-  | "connection"
-  | "section-public"
-  | "section-private"
-  | "project"
-  | "repository"
-  | "artifact"
-  | "message";
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) {
-    return "0 B";
-  }
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+export interface ConnectionNode {
+  kind: "connection";
+  host: string;
+  username?: string;
+  /** Undefined when browsing anonymously. */
+  credentialsAccepted?: boolean;
+  systemInfo: HarborSystemInfo;
 }
 
-export class HarborTreeItem extends vscode.TreeItem {
+export interface SectionNode {
+  kind: "section";
+  visibility: ProjectVisibility;
+  expanded: boolean;
+}
+
+export interface ProjectNode {
+  kind: "project";
+  baseUrl: string;
+  project: HarborProject;
+}
+
+export interface RepositoryNode {
+  kind: "repository";
+  baseUrl: string;
+  project: HarborProject;
+  repository: HarborRepository;
+  shortName: string;
+}
+
+export interface ArtifactNode {
+  kind: "artifact";
+  baseUrl: string;
+  project: HarborProject;
+  shortName: string;
+  artifact: HarborArtifact;
+  tag?: string;
+  /** Full image reference: `<host>/<project>/<repo>:<tag>` or `…@<digest>`. */
+  reference: string;
+  pullCommand?: string;
+}
+
+export interface MessageNode {
+  kind: "message";
+  id: string;
+  text: string;
+  severity: "info" | "warning" | "error";
+  detail?: string;
+}
+
+export type HarborNode =
+  | ConnectionNode
+  | SectionNode
+  | ProjectNode
+  | RepositoryNode
+  | ArtifactNode
+  | MessageNode;
+
+export class ProjectsProvider implements vscode.TreeDataProvider<HarborNode>, vscode.Disposable {
+  private readonly changeEmitter = new vscode.EventEmitter<void>();
+  readonly onDidChangeTreeData = this.changeEmitter.event;
+
+  /** Host used in image references, resolved when the root is loaded. */
+  private registryHostName: string | undefined;
+  private readonly dateFormat = createDateFormat({ dateStyle: "medium" });
+  private readonly dateTimeFormat = createDateFormat({ dateStyle: "medium", timeStyle: "short" });
+
   constructor(
-    public readonly nodeType: NodeType,
-    label: string,
-    collapsibleState: vscode.TreeItemCollapsibleState,
-    public readonly project?: HarborProject,
-    public readonly repository?: HarborRepository,
-    public readonly artifact?: HarborArtifact,
-    public readonly tagName?: string,
-    public readonly imageRef?: string,
-  ) {
-    super(label, collapsibleState);
-    this.contextValue = nodeType;
+    private readonly session: HarborSession,
+    private readonly log: vscode.LogOutputChannel,
+  ) {}
 
-    if (nodeType === "connection") {
-      this.iconPath = new vscode.ThemeIcon("server");
-    }
+  refresh(): void {
+    this.changeEmitter.fire();
+  }
 
-    if (nodeType === "project" && project) {
-      this.description = `${project.repo_count} repos`;
-      this.tooltip = project.name;
-      this.iconPath = new vscode.ThemeIcon("folder");
-    }
+  dispose(): void {
+    this.changeEmitter.dispose();
+  }
 
-    if (nodeType === "repository" && repository) {
-      this.description = `${repository.artifact_count} images`;
-      this.iconPath = new vscode.ThemeIcon("package");
+  async getChildren(element?: HarborNode): Promise<HarborNode[]> {
+    const current = this.session.current;
+    if (!current) {
+      return [];
     }
+    const { connection, client } = current;
 
-    if (nodeType === "artifact" && artifact) {
-      const date = new Date(artifact.push_time).toLocaleDateString();
-      const size = formatBytes(artifact.size);
-      this.description = `${date} · ${size}`;
-      this.tooltip = new vscode.MarkdownString(
-        `**Digest:** \`${artifact.digest}\``,
-      );
-      this.iconPath = new vscode.ThemeIcon("tag");
+    switch (element?.kind) {
+      case undefined:
+        return this.loadRoot();
+
+      case "section":
+        return this.load(`section:${element.visibility}`, "Could not load projects", async () => {
+          const projects = await client.listProjects(element.visibility);
+          if (projects.length === 0) {
+            return [message(`section:${element.visibility}`, element.visibility === "public"
+              ? "No public projects"
+              : "No private projects you can access")];
+          }
+          return projects.map((project): ProjectNode => ({ kind: "project", baseUrl: connection.url, project }));
+        });
+
+      case "project":
+        return this.load(`project:${element.project.project_id}`, "Could not load repositories", async () => {
+          const repositories = await client.listRepositories(element.project.name);
+          if (repositories.length === 0) {
+            return [message(`project:${element.project.project_id}`, "No repositories")];
+          }
+          return repositories.map((repository): RepositoryNode => ({
+            kind: "repository",
+            baseUrl: element.baseUrl,
+            project: element.project,
+            repository,
+            shortName: repositoryShortName(element.project.name, repository.name),
+          }));
+        });
+
+      case "repository":
+        return this.load(`repository:${element.repository.id}`, "Could not load artifacts", async () => {
+          const artifacts = await client.listArtifacts(element.project.name, element.shortName);
+          if (artifacts.length === 0) {
+            return [message(`repository:${element.repository.id}`, "No artifacts")];
+          }
+          const host = this.registryHostName ?? registryHost(connection.url);
+          const repository = repositoryReference(host, element.repository.name);
+          return artifacts.flatMap((artifact) => {
+            const tags = artifact.tags?.length ? artifact.tags.map((t) => t.name) : [undefined];
+            return tags.map((tag): ArtifactNode => ({
+              kind: "artifact",
+              baseUrl: element.baseUrl,
+              project: element.project,
+              shortName: element.shortName,
+              artifact,
+              tag,
+              reference: imageReference(repository, artifact, tag),
+              pullCommand: pullCommand(repository, artifact, tag),
+            }));
+          });
+        });
+
+      default:
+        return [];
     }
+  }
+
+  getTreeItem(node: HarborNode): vscode.TreeItem {
+    switch (node.kind) {
+      case "connection":
+        return this.connectionItem(node);
+      case "section":
+        return sectionItem(node);
+      case "project":
+        return projectItem(node);
+      case "repository":
+        return repositoryItem(node);
+      case "artifact":
+        return this.artifactItem(node);
+      case "message":
+        return messageItem(node);
+    }
+  }
+
+  private async loadRoot(): Promise<HarborNode[]> {
+    const current = this.session.current;
+    if (!current) {
+      return [];
+    }
+    const { connection, client } = current;
+    const host = new URL(connection.url).host;
+    return this.load("root", `Could not connect to ${host}`, async () => {
+      const { info, credentialsAccepted } = await client.getSystemInfo();
+      this.registryHostName = registryHost(connection.url, info.registry_url);
+
+      const root: HarborNode[] = [{
+        kind: "connection",
+        host,
+        username: connection.credentials?.username,
+        credentialsAccepted,
+        systemInfo: info,
+      }];
+      if (credentialsAccepted) {
+        root.push(
+          { kind: "section", visibility: "private", expanded: true },
+          { kind: "section", visibility: "public", expanded: false },
+        );
+      } else {
+        if (credentialsAccepted === false) {
+          root.push({
+            kind: "message",
+            id: "root:credentials",
+            severity: "warning",
+            text: "Saved credentials were rejected",
+            detail: "Harbor did not accept the saved username and password, so only public projects are shown. Run \"Harbor Browser: Connect to Registry…\" to sign in again.",
+          });
+        }
+        root.push({ kind: "section", visibility: "public", expanded: true });
+      }
+      return root;
+    });
+  }
+
+  /** Runs a loader and turns failures into a visible error node plus a log entry. */
+  private async load(
+    parentId: string,
+    failureText: string,
+    loader: () => Promise<HarborNode[]>,
+  ): Promise<HarborNode[]> {
+    try {
+      return await loader();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      this.log.error(`${failureText}: ${detail}`);
+      return [{
+        kind: "message",
+        id: `${parentId}:error`,
+        severity: "error",
+        text: failureText,
+        detail,
+      }];
+    }
+  }
+
+  private connectionItem(node: ConnectionNode): vscode.TreeItem {
+    const item = new vscode.TreeItem(node.host, vscode.TreeItemCollapsibleState.None);
+    item.id = "connection";
+    item.contextValue = "connection";
+
+    const rejected = node.credentialsAccepted === false;
+    const identity = node.username ?? "anonymous";
+    item.description = rejected ? `${identity} — sign-in failed` : identity;
+    item.iconPath = rejected
+      ? new vscode.ThemeIcon("warning", new vscode.ThemeColor("list.warningForeground"))
+      : new vscode.ThemeIcon("server");
+
+    const tooltip = new vscode.MarkdownString();
+    tooltip.appendMarkdown("**Registry:** ").appendText(node.host).appendMarkdown("  \n");
+    if (node.systemInfo.harbor_version) {
+      tooltip.appendMarkdown("**Harbor version:** ").appendText(node.systemInfo.harbor_version).appendMarkdown("  \n");
+    }
+    tooltip.appendMarkdown("**Signed in as:** ").appendText(node.username ? identity : "anonymous (public projects only)");
+    if (rejected) {
+      tooltip.appendMarkdown("\n\n$(warning) Harbor rejected the saved credentials.");
+      tooltip.supportThemeIcons = true;
+    }
+    item.tooltip = tooltip;
+    return item;
+  }
+
+  private artifactItem(node: ArtifactNode): vscode.TreeItem {
+    const { artifact, tag } = node;
+    const item = new vscode.TreeItem(tag ?? shortDigest(artifact.digest), vscode.TreeItemCollapsibleState.None);
+    item.id = `artifact:${artifact.id}:${tag ?? "@untagged"}`;
+    item.contextValue = node.pullCommand ? "artifact:pullable" : "artifact";
+    item.iconPath = new vscode.ThemeIcon(tag ? "tag" : "circle-outline");
+
+    item.description = [
+      tag ? undefined : "untagged",
+      artifact.type && artifact.type !== "IMAGE" ? artifact.type.toLowerCase() : undefined,
+      this.formatDate(artifact.push_time, this.dateFormat),
+      formatBytes(artifact.size),
+    ].filter(Boolean).join(" · ");
+
+    const tooltip = new vscode.MarkdownString();
+    tooltip.appendCodeblock(node.reference, "text");
+    tooltip.appendMarkdown("**Type:** ").appendText(artifact.type || "unknown").appendMarkdown("  \n");
+    tooltip.appendMarkdown("**Digest:** ").appendText(artifact.digest).appendMarkdown("  \n");
+    tooltip.appendMarkdown("**Size:** ").appendText(formatBytes(artifact.size)).appendMarkdown("  \n");
+    const pushed = this.formatDate(artifact.push_time, this.dateTimeFormat);
+    if (pushed) {
+      tooltip.appendMarkdown("**Pushed:** ").appendText(pushed).appendMarkdown("  \n");
+    }
+    const pulled = this.formatDate(artifact.pull_time, this.dateTimeFormat);
+    if (pulled) {
+      tooltip.appendMarkdown("**Last pulled:** ").appendText(pulled);
+    }
+    item.tooltip = tooltip;
+    return item;
+  }
+
+  private formatDate(value: string | undefined, format: Intl.DateTimeFormat): string | undefined {
+    if (!value) {
+      return undefined;
+    }
+    const date = new Date(value);
+    // Harbor reports "0001-01-01T00:00:00.000Z" for artifacts that were never pulled.
+    if (Number.isNaN(date.getTime()) || date.getUTCFullYear() < 1970) {
+      return undefined;
+    }
+    return format.format(date);
   }
 }
 
-export class ProjectsProvider
-  implements vscode.TreeDataProvider<HarborTreeItem>
-{
-  private _onDidChangeTreeData = new vscode.EventEmitter<void>();
-  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+function message(parentId: string, text: string): MessageNode {
+  return { kind: "message", id: `${parentId}:message`, severity: "info", text };
+}
 
-  constructor(private credentials: HarborCredentials | undefined) {}
+function sectionItem(node: SectionNode): vscode.TreeItem {
+  const isPublic = node.visibility === "public";
+  const item = new vscode.TreeItem(
+    isPublic ? "Public Projects" : "Private Projects",
+    node.expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed,
+  );
+  item.id = `section:${node.visibility}`;
+  item.contextValue = "section";
+  item.iconPath = new vscode.ThemeIcon(isPublic ? "globe" : "lock");
+  item.tooltip = isPublic
+    ? "Projects anyone can pull from"
+    : "Private projects you are a member of (all private projects for administrators)";
+  return item;
+}
 
-  setCredentials(credentials: HarborCredentials | undefined) {
-    this.credentials = credentials;
-    this._onDidChangeTreeData.fire();
+function projectItem(node: ProjectNode): vscode.TreeItem {
+  const { project } = node;
+  const item = new vscode.TreeItem(project.name, vscode.TreeItemCollapsibleState.Collapsed);
+  item.id = `project:${project.project_id}`;
+  item.contextValue = "project";
+  // Regular projects report no registry or a registry_id of 0.
+  const isProxyCache = (project.registry_id ?? 0) > 0;
+  const repositories = project.repo_count === undefined
+    ? undefined
+    : pluralize(project.repo_count, "repository", "repositories");
+  item.description = [isProxyCache ? "proxy cache" : undefined, repositories].filter(Boolean).join(" · ");
+  item.iconPath = new vscode.ThemeIcon(isProxyCache ? "cloud" : "folder");
+
+  const tooltip = new vscode.MarkdownString();
+  tooltip.appendMarkdown("**Project:** ").appendText(project.name).appendMarkdown("  \n");
+  tooltip.appendMarkdown("**Visibility:** ").appendText(project.metadata?.public === "true" ? "public" : "private");
+  if (isProxyCache) {
+    tooltip.appendMarkdown("  \n**Proxy cache:** images are pulled through from an upstream registry");
+  }
+  item.tooltip = tooltip;
+  return item;
+}
+
+function repositoryItem(node: RepositoryNode): vscode.TreeItem {
+  const { repository } = node;
+  const item = new vscode.TreeItem(node.shortName, vscode.TreeItemCollapsibleState.Collapsed);
+  item.id = `repository:${repository.id}`;
+  item.contextValue = "repository";
+  item.iconPath = new vscode.ThemeIcon("package");
+  if (repository.artifact_count !== undefined) {
+    item.description = pluralize(repository.artifact_count, "artifact", "artifacts");
   }
 
-  getBaseUrl(): string | undefined {
-    return this.credentials?.url;
+  const tooltip = new vscode.MarkdownString();
+  tooltip.appendMarkdown("**Repository:** ").appendText(repository.name);
+  if (repository.pull_count !== undefined) {
+    tooltip.appendMarkdown("  \n**Pulls:** ").appendText(String(repository.pull_count));
   }
-
-  refresh() {
-    this._onDidChangeTreeData.fire();
+  if (repository.description) {
+    // Harbor repository descriptions are Markdown. The string is not trusted,
+    // so command links and HTML are not rendered.
+    tooltip.appendMarkdown("\n\n---\n\n").appendMarkdown(repository.description);
   }
+  item.tooltip = tooltip;
+  return item;
+}
 
-  getTreeItem(element: HarborTreeItem): vscode.TreeItem {
-    return element;
+function messageItem(node: MessageNode): vscode.TreeItem {
+  const item = new vscode.TreeItem(node.text, vscode.TreeItemCollapsibleState.None);
+  item.id = node.id;
+  item.contextValue = "message";
+  if (node.severity === "error") {
+    item.description = node.detail;
   }
+  item.tooltip = node.detail;
+  item.iconPath = node.severity === "info"
+    ? new vscode.ThemeIcon("info")
+    : new vscode.ThemeIcon(node.severity, new vscode.ThemeColor(
+      node.severity === "error" ? "list.errorForeground" : "list.warningForeground",
+    ));
+  return item;
+}
 
-  async getChildren(element?: HarborTreeItem): Promise<HarborTreeItem[]> {
-    if (!element) {
-      if (!this.credentials) {
-        return [];
-      }
-      const host = new URL(this.credentials.url).host;
-      return [
-        new HarborTreeItem(
-          "connection",
-          host,
-          vscode.TreeItemCollapsibleState.None,
-        ),
-        new HarborTreeItem(
-          "section-public",
-          "Public Projects",
-          vscode.TreeItemCollapsibleState.Collapsed,
-        ),
-        new HarborTreeItem(
-          "section-private",
-          "Private Projects",
-          vscode.TreeItemCollapsibleState.Expanded,
-        ),
-      ];
-    }
-
-    if (element.nodeType === "section-public" && this.credentials) {
-      try {
-        const projects = await listPublicProjects(this.credentials.url);
-        if (projects.length === 0) {
-          return [
-            new HarborTreeItem(
-              "message",
-              "No public projects",
-              vscode.TreeItemCollapsibleState.None,
-            ),
-          ];
-        }
-        return projects.map(
-          (p) =>
-            new HarborTreeItem(
-              "project",
-              p.name,
-              vscode.TreeItemCollapsibleState.Collapsed,
-              p,
-            ),
-        );
-      } catch {
-        return [
-          new HarborTreeItem(
-            "message",
-            "Error loading projects",
-            vscode.TreeItemCollapsibleState.None,
-          ),
-        ];
-      }
-    }
-
-    if (element.nodeType === "section-private" && this.credentials) {
-      try {
-        const projects = await listPrivateProjects(this.credentials);
-        if (projects.length === 0) {
-          return [
-            new HarborTreeItem(
-              "message",
-              "No private projects or invalid credentials",
-              vscode.TreeItemCollapsibleState.None,
-            ),
-          ];
-        }
-        return projects.map(
-          (p) =>
-            new HarborTreeItem(
-              "project",
-              p.name,
-              vscode.TreeItemCollapsibleState.Collapsed,
-              p,
-            ),
-        );
-      } catch {
-        return [
-          new HarborTreeItem(
-            "message",
-            "Error loading projects",
-            vscode.TreeItemCollapsibleState.None,
-          ),
-        ];
-      }
-    }
-
-    if (element.nodeType === "project" && element.project && this.credentials) {
-      try {
-        const creds = element.project.public ? undefined : this.credentials;
-        const repos = await listRepositories(
-          this.credentials.url,
-          element.project.name,
-          creds,
-        );
-        if (repos.length === 0) {
-          return [
-            new HarborTreeItem(
-              "message",
-              "No repositories",
-              vscode.TreeItemCollapsibleState.None,
-            ),
-          ];
-        }
-        return repos.map((r) => {
-          const repoShortName = r.name.replace(`${element.project!.name}/`, "");
-          return new HarborTreeItem(
-            "repository",
-            repoShortName,
-            vscode.TreeItemCollapsibleState.Collapsed,
-            element.project,
-            r,
-          );
-        });
-      } catch {
-        return [
-          new HarborTreeItem(
-            "message",
-            "Error loading repositories",
-            vscode.TreeItemCollapsibleState.None,
-          ),
-        ];
-      }
-    }
-
-    if (
-      element.nodeType === "repository" &&
-      element.repository &&
-      element.project &&
-      this.credentials
-    ) {
-      try {
-        const creds = element.project.public ? undefined : this.credentials;
-        const projectName = element.project.name;
-        const repoShortName = element.repository.name.replace(
-          `${projectName}/`,
-          "",
-        );
-        const artifacts = await listArtifacts(
-          this.credentials.url,
-          projectName,
-          repoShortName,
-          creds,
-        );
-        if (artifacts.length === 0) {
-          return [
-            new HarborTreeItem(
-              "message",
-              "No artifacts",
-              vscode.TreeItemCollapsibleState.None,
-            ),
-          ];
-        }
-
-        const registryHost = new URL(this.credentials.url).host;
-        const items: HarborTreeItem[] = [];
-
-        for (const artifact of artifacts) {
-          const tags = artifact.tags ?? [];
-          if (tags.length === 0) {
-            const shortDigest = artifact.digest.substring(7, 19);
-            const imageRef = `${registryHost}/${projectName}/${repoShortName}@${artifact.digest}`;
-            items.push(
-              new HarborTreeItem(
-                "artifact",
-                `<untagged> ${shortDigest}`,
-                vscode.TreeItemCollapsibleState.None,
-                element.project,
-                element.repository,
-                artifact,
-                undefined,
-                imageRef,
-              ),
-            );
-          } else {
-            for (const tag of tags) {
-              const imageRef = `${registryHost}/${projectName}/${repoShortName}:${tag.name}`;
-              items.push(
-                new HarborTreeItem(
-                  "artifact",
-                  tag.name,
-                  vscode.TreeItemCollapsibleState.None,
-                  element.project,
-                  element.repository,
-                  artifact,
-                  tag.name,
-                  imageRef,
-                ),
-              );
-            }
-          }
-        }
-
-        return items;
-      } catch {
-        return [
-          new HarborTreeItem(
-            "message",
-            "Error loading artifacts",
-            vscode.TreeItemCollapsibleState.None,
-          ),
-        ];
-      }
-    }
-
-    return [];
+/** Formats dates in the VS Code display language. */
+function createDateFormat(options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  try {
+    return new Intl.DateTimeFormat(vscode.env.language, options);
+  } catch {
+    return new Intl.DateTimeFormat(undefined, options);
   }
 }

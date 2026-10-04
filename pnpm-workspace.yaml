@@ -1,2 +1,8 @@
-ignoredBuiltDependencies:
-  - esbuild
+# Install scripts are denied unless a dependency really needs one:
+# - esbuild resolves its platform binary through optionalDependencies.
+# - @vscode/vsce-sign is only used to sign/verify signature manifests.
+# - keytar comes from the vsce copy bundled with ovsx, which never stores credentials.
+allowBuilds:
+  "@vscode/vsce-sign": false
+  esbuild: false
+  keytar: false
