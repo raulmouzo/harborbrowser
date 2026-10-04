@@ -89,6 +89,24 @@
         "icon": "$(output)"
       }
     ],
+    "configuration": {
+      "title": "Harbor Browser",
+      "properties": {
+        "harborbrowser.pullCommand.client": {
+          "type": "string",
+          "enum": [
+            "docker",
+            "podman"
+          ],
+          "markdownEnumDescriptions": [
+            "`docker pull <reference>`",
+            "`podman pull <reference>`"
+          ],
+          "default": "docker",
+          "markdownDescription": "Command-line client used by **Copy Pull Command** for container images. Helm charts and CNAB bundles always use `helm` and `cnab-to-oci`."
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {

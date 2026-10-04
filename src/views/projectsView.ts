@@ -42,9 +42,10 @@ export interface ArtifactNode {
   shortName: string;
   artifact: HarborArtifact;
   tag?: string;
+  /** `<host>/<project>/<repository>`, used to build references and pull commands. */
+  repositoryReference: string;
   /** Full image reference: `<host>/<project>/<repo>:<tag>` or `…@<digest>`. */
   reference: string;
-  pullCommand?: string;
 }
 
 export interface MessageNode {
@@ -139,8 +140,8 @@ export class ProjectsProvider implements vscode.TreeDataProvider<HarborNode>, vs
               shortName: element.shortName,
               artifact,
               tag,
+              repositoryReference: repository,
               reference: imageReference(repository, artifact, tag),
-              pullCommand: pullCommand(repository, artifact, tag),
             }));
           });
         });
@@ -257,7 +258,9 @@ export class ProjectsProvider implements vscode.TreeDataProvider<HarborNode>, vs
     const { artifact, tag } = node;
     const item = new vscode.TreeItem(tag ?? shortDigest(artifact.digest), vscode.TreeItemCollapsibleState.None);
     item.id = `artifact:${artifact.id}:${tag ?? "@untagged"}`;
-    item.contextValue = node.pullCommand ? "artifact:pullable" : "artifact";
+    // The client setting only changes the command, not whether one exists.
+    const pullable = pullCommand(node.repositoryReference, artifact, tag) !== undefined;
+    item.contextValue = pullable ? "artifact:pullable" : "artifact";
     item.iconPath = new vscode.ThemeIcon(tag ? "tag" : "circle-outline");
 
     item.description = [
