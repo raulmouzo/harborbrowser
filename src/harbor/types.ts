@@ -40,6 +40,19 @@ export interface HarborTag {
   immutable?: boolean;
 }
 
+export interface HarborPlatform {
+  architecture?: string;
+  os?: string;
+  variant?: string;
+}
+
+/** Child of an image index (multi-platform image). */
+export interface HarborReference {
+  child_digest: string;
+  platform?: HarborPlatform | null;
+  annotations?: Record<string, string> | null;
+}
+
 export interface HarborArtifact {
   id: number;
   /** e.g. "IMAGE", "CHART", "CNAB". */
@@ -50,6 +63,10 @@ export interface HarborArtifact {
   push_time: string;
   pull_time?: string;
   tags: HarborTag[] | null;
+  /** Set for image indexes: one entry per referenced manifest. */
+  references?: HarborReference[] | null;
+  /** Metadata read from the image config; includes `os` and `architecture` for images. */
+  extra_attrs?: Record<string, unknown> | null;
 }
 
 export interface HarborSystemInfo {

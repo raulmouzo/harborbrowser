@@ -13,6 +13,7 @@ Browse a [Harbor](https://goharbor.io/) container registry from the sidebar of V
 - **Open in Harbor**: jump to the project, repository or artifact page in the web portal.
 - **Any account type**: user accounts (database or LDAP), OIDC users with their CLI secret, robot accounts, or anonymous access to public projects.
 - **Credentials checked before they are saved**, and kept in the operating system keychain through VS Code's secret storage.
+- **Platforms at a glance**: multi-platform images (image indexes) list the platforms they support, such as `amd64, arm64/v8`, so you can check ARM support before deploying.
 - Push date, size and type of every artifact, with more details on hover.
 
 ## Requirements
