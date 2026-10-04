@@ -8,6 +8,7 @@
 - Credentials are verified before they are saved, for user accounts, OIDC CLI secrets and robot accounts.
 - A warning in the tree when the saved credentials are no longer accepted.
 - Pull commands for Helm charts (`helm pull oci://…`) and CNAB bundles, matching the Harbor portal.
+- Platforms of multi-platform images (and of single-platform images) are shown next to each artifact, with the full list in the tooltip. BuildKit attestation manifests are ignored.
 - Proxy cache projects are marked in the tree.
 - Errors are shown in the tree, and details are logged to the new **Harbor Browser: Show Logs** output channel.
 - Marketplace icon, and support for Restricted Mode and virtual workspaces.

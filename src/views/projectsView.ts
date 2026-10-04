@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { ProjectVisibility } from "../harbor/client";
+import { artifactPlatforms, summarizePlatforms } from "../harbor/platforms";
 import { imageReference, pullCommand, registryHost, repositoryReference } from "../harbor/references";
 import { HarborArtifact, HarborProject, HarborRepository, HarborSystemInfo } from "../harbor/types";
 import { repositoryShortName } from "../harbor/url";
@@ -260,9 +261,11 @@ export class ProjectsProvider implements vscode.TreeDataProvider<HarborNode>, vs
     item.contextValue = node.pullCommand ? "artifact:pullable" : "artifact";
     item.iconPath = new vscode.ThemeIcon(tag ? "tag" : "circle-outline");
 
+    const platforms = artifactPlatforms(artifact);
     item.description = [
       tag ? undefined : "untagged",
       artifact.type && artifact.type !== "IMAGE" ? artifact.type.toLowerCase() : undefined,
+      summarizePlatforms(platforms),
       this.formatDate(artifact.push_time, this.dateFormat),
       formatBytes(artifact.size),
     ].filter(Boolean).join(" · ");
@@ -270,6 +273,10 @@ export class ProjectsProvider implements vscode.TreeDataProvider<HarborNode>, vs
     const tooltip = new vscode.MarkdownString();
     tooltip.appendCodeblock(node.reference, "text");
     tooltip.appendMarkdown("**Type:** ").appendText(artifact.type || "unknown").appendMarkdown("  \n");
+    if (platforms.length > 0) {
+      const label = platforms.length > 1 ? "Platforms" : "Platform";
+      tooltip.appendMarkdown(`**${label}:** `).appendText(platforms.join(", ")).appendMarkdown("  \n");
+    }
     tooltip.appendMarkdown("**Digest:** ").appendText(artifact.digest).appendMarkdown("  \n");
     tooltip.appendMarkdown("**Size:** ").appendText(formatBytes(artifact.size)).appendMarkdown("  \n");
     const pushed = this.formatDate(artifact.push_time, this.dateTimeFormat);
