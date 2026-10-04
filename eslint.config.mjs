@@ -1,18 +1,16 @@
-import typescriptEslint from "typescript-eslint";
+// @ts-check
+import js from "@eslint/js";
+import { defineConfig } from "eslint/config";
+import tseslint from "typescript-eslint";
 
-export default [{
+export default defineConfig({
     files: ["**/*.ts"],
-}, {
-    plugins: {
-        "@typescript-eslint": typescriptEslint.plugin,
-    },
-
+    extends: [js.configs.recommended, tseslint.configs.recommendedTypeChecked],
     languageOptions: {
-        parser: typescriptEslint.parser,
-        ecmaVersion: 2022,
-        sourceType: "module",
+        parserOptions: {
+            projectService: true,
+        },
     },
-
     rules: {
         "@typescript-eslint/naming-convention": ["warn", {
             selector: "import",
@@ -24,4 +22,4 @@ export default [{
         "no-throw-literal": "warn",
         semi: "warn",
     },
-}];
+});

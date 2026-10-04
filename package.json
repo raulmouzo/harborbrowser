@@ -1,58 +1,92 @@
 {
   "name": "harborbrowser",
   "displayName": "Harbor Browser",
-  "description": "Browse Harbor container registry projects, repositories, and image tags directly in VS Code.",
-  "version": "1.0.0",
+  "description": "Browse Harbor container registry projects, repositories and artifacts, and copy image references or pull commands without leaving the editor.",
+  "version": "1.1.0",
   "publisher": "raulmouzo",
   "license": "MIT",
+  "icon": "resources/icon.png",
+  "galleryBanner": {
+    "color": "#0B3D5C",
+    "theme": "dark"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/raulmouzo/harborbrowser"
+    "url": "https://github.com/raulmouzo/harborbrowser.git"
   },
+  "bugs": {
+    "url": "https://github.com/raulmouzo/harborbrowser/issues"
+  },
+  "homepage": "https://github.com/raulmouzo/harborbrowser#readme",
   "keywords": [
     "harbor",
+    "goharbor",
     "docker",
     "container",
     "registry",
-    "image"
+    "container registry",
+    "image",
+    "oci",
+    "helm",
+    "kubernetes"
   ],
   "engines": {
-    "vscode": "^1.109.0"
+    "vscode": "^1.96.0"
   },
   "categories": [
     "Other"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": true
+  },
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "harborbrowser.login",
-        "title": "Harbor Browser: Login",
-        "icon": "$(sign-in)"
+        "title": "Connect to Registry…",
+        "category": "Harbor Browser",
+        "icon": "$(plug)"
       },
       {
         "command": "harborbrowser.logout",
-        "title": "Harbor Browser: Clear Credentials"
+        "title": "Disconnect",
+        "category": "Harbor Browser",
+        "icon": "$(debug-disconnect)"
       },
       {
         "command": "harborbrowser.refresh",
         "title": "Refresh",
+        "category": "Harbor Browser",
         "icon": "$(refresh)"
       },
       {
         "command": "harborbrowser.copyImageName",
-        "title": "Copy Image Name",
+        "title": "Copy Image Reference",
+        "category": "Harbor Browser",
         "icon": "$(copy)"
       },
       {
         "command": "harborbrowser.copyPullCommand",
-        "title": "Copy Pull Command"
+        "title": "Copy Pull Command",
+        "category": "Harbor Browser",
+        "icon": "$(terminal)"
       },
       {
         "command": "harborbrowser.openInBrowser",
-        "title": "Open in Browser",
+        "title": "Open in Harbor",
+        "category": "Harbor Browser",
         "icon": "$(link-external)"
+      },
+      {
+        "command": "harborbrowser.showLogs",
+        "title": "Show Logs",
+        "category": "Harbor Browser",
+        "icon": "$(output)"
       }
     ],
     "viewsContainers": {
@@ -60,7 +94,7 @@
         {
           "id": "harborbrowser",
           "title": "Harbor Browser",
-          "icon": "harborbrowser.svg"
+          "icon": "resources/activitybar.svg"
         }
       ]
     },
@@ -68,44 +102,89 @@
       "harborbrowser": [
         {
           "id": "harborbrowser.projects",
-          "name": "Projects"
+          "name": "Projects",
+          "icon": "resources/activitybar.svg",
+          "contextualTitle": "Harbor Browser"
         }
       ]
     },
     "viewsWelcome": [
       {
         "view": "harborbrowser.projects",
-        "contents": "Connect to a Harbor registry to browse your container images.\n[Login to Harbor](command:harborbrowser.login)"
+        "contents": "Browse the projects, repositories and artifacts of a [Harbor](https://goharbor.io) container registry.\n[Connect to Registry](command:harborbrowser.login)\nSign in with a user account, an OIDC CLI secret or a robot account, or browse public projects anonymously. Read the [getting started guide](https://github.com/raulmouzo/harborbrowser#getting-started) for details.",
+        "when": "!harborbrowser.connected"
       }
     ],
     "menus": {
       "view/title": [
         {
           "command": "harborbrowser.refresh",
+          "when": "view == harborbrowser.projects && harborbrowser.connected",
+          "group": "navigation@1"
+        },
+        {
+          "command": "harborbrowser.login",
           "when": "view == harborbrowser.projects",
-          "group": "navigation"
+          "group": "connection@1"
+        },
+        {
+          "command": "harborbrowser.logout",
+          "when": "view == harborbrowser.projects && harborbrowser.connected",
+          "group": "connection@2"
+        },
+        {
+          "command": "harborbrowser.showLogs",
+          "when": "view == harborbrowser.projects",
+          "group": "troubleshooting@1"
         }
       ],
       "view/item/context": [
         {
           "command": "harborbrowser.copyImageName",
-          "when": "view == harborbrowser.projects && viewItem == artifact",
+          "when": "view == harborbrowser.projects && viewItem =~ /^artifact/",
           "group": "inline@1"
         },
         {
+          "command": "harborbrowser.openInBrowser",
+          "when": "view == harborbrowser.projects && viewItem =~ /^(project|repository|artifact)/",
+          "group": "inline@2"
+        },
+        {
           "command": "harborbrowser.copyImageName",
-          "when": "view == harborbrowser.projects && viewItem == artifact",
-          "group": "copy@1"
+          "when": "view == harborbrowser.projects && viewItem =~ /^artifact/",
+          "group": "1_copy@1"
         },
         {
           "command": "harborbrowser.copyPullCommand",
-          "when": "view == harborbrowser.projects && viewItem == artifact",
-          "group": "copy@2"
+          "when": "view == harborbrowser.projects && viewItem == artifact:pullable",
+          "group": "1_copy@2"
         },
         {
           "command": "harborbrowser.openInBrowser",
-          "when": "view == harborbrowser.projects && (viewItem == project || viewItem == repository || viewItem == artifact)",
-          "group": "navigation@1"
+          "when": "view == harborbrowser.projects && viewItem =~ /^(project|repository|artifact)/",
+          "group": "2_open@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "harborbrowser.logout",
+          "when": "harborbrowser.connected"
+        },
+        {
+          "command": "harborbrowser.refresh",
+          "when": "harborbrowser.connected"
+        },
+        {
+          "command": "harborbrowser.copyImageName",
+          "when": "false"
+        },
+        {
+          "command": "harborbrowser.copyPullCommand",
+          "when": "false"
+        },
+        {
+          "command": "harborbrowser.openInBrowser",
+          "when": "false"
         }
       ]
     }
@@ -113,7 +192,7 @@
   "scripts": {
     "vscode:prepublish": "pnpm run package",
     "compile": "pnpm run check-types && pnpm run lint && node esbuild.js",
-    "watch": "npm-run-all -p watch:*",
+    "watch": "pnpm run \"/^watch:/\"",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
     "package": "pnpm run check-types && pnpm run lint && node esbuild.js --production",
@@ -127,17 +206,25 @@
     "publish-openvsx": "ovsx publish --no-dependencies"
   },
   "devDependencies": {
-    "@types/vscode": "^1.109.0",
+    "@eslint/js": "^10.0.1",
     "@types/mocha": "^10.0.10",
-    "@types/node": "22.x",
-    "@vscode/vsce": "^3.2.0",
-    "ovsx": "^0.9.0",
-    "typescript-eslint": "^8.54.0",
-    "eslint": "^9.39.2",
-    "esbuild": "^0.27.2",
-    "npm-run-all": "^4.1.5",
-    "typescript": "^5.9.3",
-    "@vscode/test-cli": "^0.0.12",
-    "@vscode/test-electron": "^2.5.2"
+    "@types/node": "20.x",
+    "@types/vscode": "1.96.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^4.0.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.12.0",
+    "ovsx": "^1.2.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.0"
+  },
+  "packageManager": "pnpm@12.9.1",
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": ">=22.13.0",
+      "onFail": "error"
+    }
   }
 }
