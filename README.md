@@ -11,6 +11,7 @@ Browse a [Harbor](https://goharbor.io/) container registry from the sidebar of V
   - Helm charts: `helm pull oci://… --version …`
   - CNAB bundles: `cnab-to-oci pull …`
 - **Open in Harbor**: jump to the project, repository or artifact page in the web portal.
+- **Vulnerability scan results**: artifacts scanned by Harbor (for example with Trivy) are colored by severity, show the number of findings, and open a full read-only report.
 - **Any account type**: user accounts (database or LDAP), OIDC users with their CLI secret, robot accounts, or anonymous access to public projects.
 - **Credentials checked before they are saved**, and kept in the operating system keychain through VS Code's secret storage.
 - Push date, size and type of every artifact, with more details on hover.
@@ -50,6 +51,15 @@ Right-click an artifact, or use the buttons that appear on hover:
 | **Copy Image Reference** | Copies `<registry>/<project>/<repository>:<tag>` or `…@<digest>` |
 | **Copy Pull Command** | Copies the pull command for the artifact type (images, Helm charts and CNAB bundles) |
 | **Open in Harbor** | Opens the artifact in the Harbor web portal |
+| **Show Vulnerability Report** | Opens the scan report as a read-only Markdown document. Available for artifacts with a finished scan |
+
+### Vulnerability scan results
+
+When Harbor has a vulnerability scanner configured, each scanned artifact shows its scan result. The icon takes the color of the highest severity found (red for critical, orange for high, yellow for medium, blue for low, green when nothing was found), and the description shows the severity and the number of findings, such as `high (12)`. Scans that are queued, running or failed are shown too. Hover over the artifact for the counts per severity and the scanner used.
+
+**Show Vulnerability Report** opens the full report as a read-only Markdown document, with one section per severity (also listed in the Outline view) and, for each vulnerability, the affected package, the installed and fixed versions, the CVSS score and a link to its description. Use **Open Preview** (`Ctrl+Shift+V` / `Cmd+Shift+V`) for a formatted view. For multi-platform images, Harbor merges the reports of every platform.
+
+Scans are started from the Harbor web portal or by the project's "scan on push" setting; the extension only reads the results.
 
 Image references use the registry address reported by Harbor, which can differ from the address you connected to when Harbor sits behind a proxy or load balancer.
 
@@ -74,6 +84,8 @@ Image references use the registry address reported by Harbor, which can differ f
 
 **"Saved credentials were rejected".** The password, CLI secret or robot secret changed, or the robot account expired. Run **Connect to Registry…** again. Until then, only public projects are shown, because Harbor treats requests with invalid credentials as anonymous.
 
+**"Could not load the vulnerability report" with OIDC sign-in.** Harbor only accepts OIDC CLI secrets for a few operations, such as listing artifacts, so reports of private projects cannot be read with them. Sign in with a robot account to read reports.
+
 **OIDC users cannot sign in.** Use the CLI secret from your Harbor user profile instead of your OIDC password. The CLI secret stops working when Harbor can no longer refresh your OIDC session. Log in to the Harbor web portal again to renew it.
 
 **Something else.** Run **Harbor Browser: Show Logs**. Every failed request is logged with the reason returned by Harbor.
@@ -82,6 +94,7 @@ Image references use the registry address reported by Harbor, which can differ f
 
 - **Open in Harbor** opens the project page for repositories whose name contains a slash (for example `team/apps/api`). The VS Code API always decodes the `%2F` that the Harbor portal needs in these links.
 - The extension is read-only: it does not push, delete, retag or scan artifacts.
+- Users signed in with an OIDC CLI secret see scan results in the tree but cannot open full reports of private projects (see Troubleshooting).
 
 ## Development
 

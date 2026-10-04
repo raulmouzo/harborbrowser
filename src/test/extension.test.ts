@@ -15,6 +15,7 @@ suite("Extension", () => {
       "harborbrowser.copyImageName",
       "harborbrowser.copyPullCommand",
       "harborbrowser.openInBrowser",
+      "harborbrowser.showVulnerabilities",
       "harborbrowser.showLogs",
     ]) {
       assert.ok(commands.includes(command), `${command} is not registered`);

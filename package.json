@@ -77,6 +77,12 @@
         "icon": "$(terminal)"
       },
       {
+        "command": "harborbrowser.showVulnerabilities",
+        "title": "Show Vulnerability Report",
+        "category": "Harbor Browser",
+        "icon": "$(shield)"
+      },
+      {
         "command": "harborbrowser.openInBrowser",
         "title": "Open in Harbor",
         "category": "Harbor Browser",
@@ -156,13 +162,18 @@
         },
         {
           "command": "harborbrowser.copyPullCommand",
-          "when": "view == harborbrowser.projects && viewItem == artifact:pullable",
+          "when": "view == harborbrowser.projects && viewItem =~ /^artifact:pullable/",
           "group": "1_copy@2"
         },
         {
           "command": "harborbrowser.openInBrowser",
           "when": "view == harborbrowser.projects && viewItem =~ /^(project|repository|artifact)/",
           "group": "2_open@1"
+        },
+        {
+          "command": "harborbrowser.showVulnerabilities",
+          "when": "view == harborbrowser.projects && viewItem =~ /^artifact.*:scanned$/",
+          "group": "3_security@1"
         }
       ],
       "commandPalette": [
@@ -184,6 +195,10 @@
         },
         {
           "command": "harborbrowser.openInBrowser",
+          "when": "false"
+        },
+        {
+          "command": "harborbrowser.showVulnerabilities",
           "when": "false"
         }
       ]
